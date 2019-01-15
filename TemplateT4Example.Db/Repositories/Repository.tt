@@ -1,6 +1,286 @@
-﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+﻿<#@ template debug="true" hostspecific="true" language="C#" #>
 <#@ assembly name="System.Core" #>
+<#@ assembly name="System.ComponentModel.DataAnnotations" #>
+<#@ assembly name="$(SolutionDir)TemplateT4Example.Db\bin\Debug\TemplateT4Example.Db.dll" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
+<#@ import namespace="System.IO" #>
 <#@ import namespace="System.Collections.Generic" #>
-<#@ output extension="cs" #>
+<#@ import namespace="System.Reflection" #>
+<#@ import namespace="System.ComponentModel.DataAnnotations" #>
+<#@ import namespace="System.ComponentModel.DataAnnotations.Schema" #>
+<#@ import namespace="TemplateT4Example.Db.Model" #>
+
+<#
+    //CAMBIAR: Namespace del entity
+    string namespaceEntity = "TemplateT4Example.Db.Model";
+    //CAMBIAR: Tipo del contexto
+    Type contextType = typeof(SchoolContext); 
+    
+
+    IEnumerable<Type> tipos = GetTypesInNamespace(Assembly.GetAssembly(contextType), namespaceEntity).Where(x=>!x.Equals(contextType) && !x.BaseType.Equals(typeof(System.Enum)) && !x.Name.Equals("<>c"));
+
+    string namespaceClass = "TemplateT4Example.Db.Repositories";
+
+    foreach(Type tipo in tipos)
+    {
+        IEnumerable<PropertyInfo> primaryKeys = tipo.GetProperties().Where(x=>IsPrimaryKey(x));
+        IEnumerable<PropertyInfo> uniqueKeys = tipo.GetProperties().Where(x=>IsUniqueKey(x));
+        IEnumerable<PropertyInfo> foreignKeys = tipo.GetProperties().Where(x=>IsForeignKey(x));
+    
+        
+#>
+using System;
+using Graddo.Common.Db;
+using System.Linq;
+using System.Threading.Tasks;
+using <#= namespaceEntity #>;
+
+namespace <#= namespaceClass #>
+{
+    public class Repositorio<#= tipo.Name #>Base : IRepositorio<#= tipo.Name #>Base
+	{
+		protected readonly EFRepository _efRepository;
+
+		/// <summary>
+        /// Constructor de la clase <#= tipo.Name #> 
+        /// </summary>
+		public Repositorio<#= tipo.Name #>Base(<#= contextType.Name  #> dbContext)
+		{
+			_efRepository = new EFRepository(dbContext);
+		}
+
+		/// <summary>
+        /// Metodo para obtener todos los <#= tipo.Name #> 
+        /// </summary>
+        /// <returns>IQueryable con todos los <#= tipo.Name #></returns>
+		public IQueryable<<#= tipo.Name #>> Get<#= tipo.Name #>()
+		{
+			return _efRepository.All<<#= tipo.Name #>>();
+		}
+
+        <# 
+        string constructor = string.Join(", ", primaryKeys.Select(x=>$"{GetTypeString(x.PropertyType)} {FormatNameVariable(x.Name)}"));
+        string expression = string.Format("x=>{0}",string.Join(" && ", primaryKeys.Select(x=>$"x.{x.Name} == {FormatNameVariable(x.Name)}")));
+        #>
+
+        /// <summary>
+        /// Obtener un <#= tipo.Name #> por su clave primaria
+        /// </summary>
+<#
+        foreach(PropertyInfo primaryKey in primaryKeys){
+#>
+		/// <param name="<#= FormatNameVariable(primaryKey.Name) #>"><#= primaryKey.Name #></param>
+<#
+		}
+#>
+        /// <returns><#= tipo.Name #>   seleccionado por su clave primaria</returns>
+		public async Task<<#= tipo.Name #>> Get<#= tipo.Name #>ByPrimaryKeyAsync(<#=constructor #>)
+		{
+			return await _efRepository.FindAsync<<#= tipo.Name #>>(<#= expression #>);
+		}
+
+        /// <summary>
+        /// Obtener un <#= tipo.Name #> por su clave primaria
+        /// </summary>
+<#
+        foreach(PropertyInfo primaryKey in primaryKeys){
+#>
+		/// <param name="<#= FormatNameVariable(primaryKey.Name) #>"><#= primaryKey.Name #></param>
+<#
+		}
+#>
+        /// <returns><#= tipo.Name #>  seleccionado por su clave primaria</returns>
+		public <#= tipo.Name #> Get<#= tipo.Name #>ByPrimaryKey(<#=constructor #>)
+		{
+			return _efRepository.Find<<#= tipo.Name #>>(<#= expression #>);
+		}
+
+<#
+		foreach(PropertyInfo uniqueKey in uniqueKeys)
+        {
+                     
+        string constructorUnique = $"{GetTypeString(uniqueKey.PropertyType)} {FormatNameVariable(uniqueKey.Name)}";
+        string expressionUnique = $"x=> x.{uniqueKey.Name} == {FormatNameVariable(uniqueKey.Name)}";
+        
+#>
+        /// <summary>
+        /// Obtener un <#= tipo.Name #> por su clave unica <#= uniqueKey.Name #>
+        /// </summary>
+		/// <param name="<#= FormatNameVariable(uniqueKey.Name) #>"><#= uniqueKey.Name #></param>
+        /// <returns><#= tipo.Name #>   seleccionado por su clave única</returns>
+		public async Task<<#= tipo.Name #>> Get<#= tipo.Name #>By<#= uniqueKey.Name #>Async(<#=constructorUnique #>)
+		{
+			return await _efRepository.FindAsync<<#= tipo.Name #>>(<#= expressionUnique #>);
+		}
+
+        /// <summary>
+        /// Obtener un <#= tipo.Name #> por su clave unica <#= uniqueKey.Name #>
+        /// </summary>
+		/// <param name="<#= FormatNameVariable(uniqueKey.Name) #>"><#= uniqueKey.Name #></param>
+        /// <returns><#= tipo.Name #>   seleccionado por su clave única</returns>
+		public <#= tipo.Name #> Get<#= tipo.Name #>By<#= uniqueKey.Name #>(<#=constructorUnique #>)
+		{
+			return _efRepository.Find<<#= tipo.Name #>>(<#= expressionUnique #>);
+		}
+<#
+		}
+#>
+
+<#
+		foreach(PropertyInfo foreignKey in foreignKeys)
+        {
+                     
+        string constructorForeign = $"{GetTypeString(foreignKey.PropertyType)} {FormatNameVariable(foreignKey.Name)}";
+        string expressionForeign = $"x=> x.{foreignKey.Name} == {FormatNameVariable(foreignKey.Name)}";
+        
+#>
+        /// <summary>
+        /// Obtener un IQueryable<<#= tipo.Name #>> por su <#=foreignKey.Name #> 
+        /// </summary>
+		/// <param name="<#= FormatNameVariable(foreignKey.Name) #>"><#= foreignKey.Name #></param>
+        /// <returns>IQueryable con los <#= tipo.Name #> seleccionado por su <#=foreignKey.Name #> </returns>
+		public IQueryable<<#= tipo.Name #>> Get<#= tipo.Name #>By<#= foreignKey.Name #>(<#=constructorForeign #>)
+		{
+			return _efRepository.Filter<<#= tipo.Name #>>(<#= expressionForeign #>);
+		}
+<#
+		}
+#>
+
+
+		/// <summary>
+        /// Crea una instancia de <#= tipo.Name #> en la base de datos
+        /// </summary>
+        /// <param name="source"><#= tipo.Name #> a crear</param>
+        /// <returns><#= tipo.Name #> creado</returns>
+		public virtual async Task<<#= tipo.Name #>> Create<#= tipo.Name #>Async(<#= tipo.Name #> source)
+		{
+			return await _efRepository.CreateAsync<<#= tipo.Name #>>(source);
+		}
+
+		/// <summary>
+        /// Crea una instancia de <#= tipo.Name #> en la base de datos
+        /// </summary>
+        /// <param name="source"><#= tipo.Name #> a crear</param>
+        /// <returns><#= tipo.Name #> creado</returns>
+		public virtual <#= tipo.Name #> Create<#= tipo.Name #>(<#= tipo.Name #> source)
+		{
+			return _efRepository.Create<<#= tipo.Name #>>(source);
+		}
+
+
+		/// <summary>
+        /// Modifica una instancia de <#= tipo.Name #> en la base de datos
+        /// </summary>
+        /// <param name="source"><#= tipo.Name #> a modificar</param>
+        /// <returns>Número de <#= tipo.Name #> modificados</returns>
+		public async Task<int> Update<#= tipo.Name #>Async(<#= tipo.Name #> source)
+		{
+			return await _efRepository.UpdateAsync<<#= tipo.Name #>>(source);
+		}
+
+		/// <summary>
+        /// Modifica una instancia de <#= tipo.Name #> en la base de datos
+        /// </summary>
+        /// <param name="source"><#= tipo.Name #> a modificar</param>
+        /// <returns>Número de <#= tipo.Name #> modificados</returns>
+		public int Update<#= tipo.Name #>(<#= tipo.Name #> source)
+		{
+			return _efRepository.Update<<#= tipo.Name #>>(source);
+		}
+
+		/// <summary>
+        /// Borra una instancia de <#= tipo.Name #> en la base de datos
+        /// </summary>
+        /// <param name="source"><#= tipo.Name #> a borrar</param>
+        /// <returns>Número de <#= tipo.Name #> borrados</returns>
+		public async Task<int> Delete<#= tipo.Name #>Async(<#= tipo.Name #> source)
+		{
+			return await _efRepository.DeleteAsync<<#= tipo.Name #>>(source);
+		}
+
+		/// <summary>
+        /// Borra una instancia de <#= tipo.Name #> en la base de datos
+        /// </summary>
+        /// <param name="source"><#= tipo.Name #> a borrar</param>
+        /// <returns>Número de <#= tipo.Name #> borrados</returns>
+		public int Delete<#= tipo.Name #>(<#= tipo.Name #> source)
+		{
+			return _efRepository.Delete<<#= tipo.Name #>>(source);
+		}
+    }
+}
+<#
+        SaveOutput($"Repositorio{tipo.Name}Base.cs");
+    }
+#>
+
+<#+
+    void SaveOutput(string outputFileName){
+        string templateDirectory = Path.Combine(Path.GetDirectoryName(Host.TemplateFile));
+        string outputFilePath = Path.Combine(templateDirectory, outputFileName);
+        File.Delete(outputFilePath);
+		File.WriteAllText(outputFilePath, this.GenerationEnvironment.ToString()); 
+        this.GenerationEnvironment.Remove(0, this.GenerationEnvironment.Length);
+    }
+#>
+<#+
+    bool IsPrimaryKey(PropertyInfo property)
+    {
+        return property.CustomAttributes.Any(x=> x.AttributeType == typeof(KeyAttribute));
+    }
+#>
+
+<#+
+    bool IsUniqueKey(PropertyInfo property)
+    {
+        return property.CustomAttributes.Any(x=> x.NamedArguments.Any(y => y.MemberName == "IsUnique" && (bool)y.TypedValue.Value));
+    }
+#>
+
+<#+
+    bool IsForeignKey(PropertyInfo property)
+    {
+        return property.CustomAttributes.Any(x=> x.AttributeType == typeof(ForeignKeyAttribute));
+    }
+#>
+<#+
+    IEnumerable<Type> GetTypesInNamespace(Assembly assembly, string nameSpace)
+    {
+        return assembly.GetTypes().Where(t => String.Equals(t.Namespace, nameSpace, StringComparison.Ordinal));
+    }
+#>
+<#+
+    string GetTypeString(Type type){
+        switch (type.Name)
+        {
+            case "Boolean":
+                return "bool";
+            case "Char":
+                return "char";
+            case "Byte":
+                return "byte";
+            case "Single":
+                return "float";
+            case "Double":
+                return "double";
+            case "Int32":
+                return "int";
+            case "String":
+                return "string";
+            case "ICollection`1":
+                return $"virtual ICollection<{GetTypeString(type.GetGenericArguments().Single())}>";
+            case "Nullable`1":
+                return $"{GetTypeString(type.GetGenericArguments().Single())}?";
+            default:
+                return type.Name;
+        }
+    }
+#>
+
+<#+
+    string FormatNameVariable(string input){
+        return input.First().ToString().ToLower() + input.Substring(1);
+    }
+#>

@@ -13,12 +13,16 @@ namespace TemplateT4Example.Db.Model
         [Key]
         public int StudentID { get; set; }
 
+        
+        [StringLength(50)]
         [Index(IsUnique = true)]
         public string Username { get; set; }
 
+        [StringLength(50)]
         [Index(IsUnique = true)]
         public string Email { get; set; }
 
+        [StringLength(50)]
         public string Password { get; set; }
 
         public virtual ICollection<Class> Classes { get; set; }

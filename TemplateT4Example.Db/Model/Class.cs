@@ -12,6 +12,8 @@ namespace TemplateT4Example.Db.Model
     {
         [Key]
         public int ClassID { get; set; }
+
+        [StringLength(50)]
         public string Location { get; set; }
 
         [ForeignKey("Teacher")]

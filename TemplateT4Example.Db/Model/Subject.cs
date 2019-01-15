@@ -11,6 +11,8 @@ namespace TemplateT4Example.Db.Model
     {
         [Key]
         public int SubjectID { get; set; }
+
+        [StringLength(100)]
         public string Name { get; set; }
 
         public virtual ICollection<Class> Classes { get; set; }
